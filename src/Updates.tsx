@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as api from './api';
 import type { ReleaseInfo, Update } from './api';
 
@@ -10,6 +10,8 @@ import type { ReleaseInfo, Update } from './api';
  * → установка (приложение закрывается, установщик запускает новую версию).
  */
 
+/** Сколько держать на кнопке «✓ У вас последняя версия». */
+const UP_TO_DATE_MS = 4000;
 /** Сколько пунктов изменений показывать в свёрнутом виде. */
 const SHORT_ITEMS = 3;
 
@@ -31,6 +33,15 @@ export function useUpdater(notify: (text: string) => void) {
   const [upd, setUpd] = useState<UpdateState | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [checking, setChecking] = useState(false);
+  // «у вас последняя версия» показывается на самой кнопке несколько секунд, а не всплывашкой
+  const [upToDate, setUpToDate] = useState(false);
+  // анимировать смену подписи кнопки только после первой ручной проверки, не при запуске
+  const [labelAnimated, setLabelAnimated] = useState(false);
+  useEffect(() => {
+    if (!upToDate) return;
+    const t = setTimeout(() => setUpToDate(false), UP_TO_DATE_MS);
+    return () => clearTimeout(t);
+  }, [upToDate]);
   const updRef = useRef(upd);
   updRef.current = upd;
 
@@ -43,6 +54,7 @@ export function useUpdater(notify: (text: string) => void) {
         return;
       }
       setChecking(true);
+      setUpToDate(false);
       try {
         const update = await api.findUpdate(manual);
         if (update) {
@@ -50,7 +62,8 @@ export function useUpdater(notify: (text: string) => void) {
           setUpd({ update, notes, phase: 'available', progress: 0 });
           setPanel('update');
         } else if (manual) {
-          notify('Установлена последняя версия.');
+          setUpToDate(true);
+          setLabelAnimated(true);
         }
       } catch (e) {
         if (manual) notify(`Не удалось проверить обновления: ${String(e)}`);
@@ -99,6 +112,8 @@ export function useUpdater(notify: (text: string) => void) {
     upd,
     panel,
     checking,
+    upToDate,
+    labelAnimated,
     checkNow: () => check(true),
     openWhatsNew: () => setPanel('whatsnew'),
     close: () => setPanel(null),
@@ -110,8 +125,9 @@ export function useUpdater(notify: (text: string) => void) {
 export type Updater = ReturnType<typeof useUpdater>;
 
 /** Подпись кнопки «Проверить обновления»: пока обновление качается или ждёт перезапуска — его статус. */
-export function updateButtonLabel(u: Updater): string {
+export function updateButtonLabel(u: Updater): ReactNode {
   if (u.checking) return 'Проверяю…';
+  if (u.upToDate) return <IconLabel key="ok" icon={<span className="ok-mark">✓</span>} text="У вас последняя версия" animate />;
   switch (u.upd?.phase) {
     case 'downloading':
       return u.upd.progress === null
@@ -119,22 +135,39 @@ export function updateButtonLabel(u: Updater): string {
         : `Скачивание ${Math.round(u.upd.progress * 100)}%`;
     case 'ready':
     case 'installing':
-      return '⟳ Установить обновление';
+      return <IconLabel key="install" icon="⟳" text="Установить обновление" animate={u.labelAnimated} />;
     default:
-      return '⟳ Проверить обновления';
+      return <IconLabel key="check" icon="⟳" text="Проверить обновления" animate={u.labelAnimated} />;
   }
+}
+
+/**
+ * Подпись «иконка + текст». С animate иконка «выпрыгивает», текст проявляется — одна анимация
+ * на все подписи; срабатывает при появлении подписи (смена key пересоздаёт элемент).
+ */
+function IconLabel({ icon, text, animate = false }: { icon: ReactNode; text: string; animate?: boolean }) {
+  return (
+    <span className={animate ? 'icon-label animated' : 'icon-label'}>
+      <span className="label-icon">{icon}</span> <span className="label-text">{text}</span>
+    </span>
+  );
 }
 
 /* ---------- Карточка ---------- */
 
 export function UpdateCard({ u }: { u: Updater }) {
   if (!u.panel) return null;
+  const isUpdate = u.panel === 'update' && u.upd;
   return (
     <div className="update-card" role="dialog" aria-label="Обновление Macro Studio">
-      <button className="card-close" title="Закрыть" onClick={u.close}>
-        ×
-      </button>
-      {u.panel === 'update' && u.upd ? <UpdateBody u={u} s={u.upd} /> : <WhatsNew current={u.version} />}
+      {/* шапка закреплена: при прокрутке длинного списка заголовок и крестик остаются на месте */}
+      <div className="card-head">
+        <h3>{isUpdate ? `Доступна версия ${u.upd!.update.version}` : 'Что нового'}</h3>
+        <button className="card-close" title="Закрыть" onClick={u.close}>
+          ×
+        </button>
+      </div>
+      {isUpdate ? <UpdateBody u={u} s={u.upd!} /> : <WhatsNew current={u.version} />}
     </div>
   );
 }
@@ -142,7 +175,6 @@ export function UpdateCard({ u }: { u: Updater }) {
 function UpdateBody({ u, s }: { u: Updater; s: UpdateState }) {
   return (
     <>
-      <h3>Доступна версия {s.update.version}</h3>
       <p className="muted">У вас {s.update.currentVersion}</p>
       <Notes md={s.notes} short />
 
@@ -205,7 +237,6 @@ function WhatsNew({ current }: { current: string | null }) {
 
   return (
     <>
-      <h3>Что нового</h3>
       {error && <div className="error-box">⚠ Не удалось загрузить список изменений: {error}</div>}
       {!releases && !error && <p className="muted">Загрузка…</p>}
       {releases?.length === 0 && <p className="muted">Релизов пока нет.</p>}
