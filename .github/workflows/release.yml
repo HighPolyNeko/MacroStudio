@@ -1,9 +1,10 @@
 name: Release
 
-# Когда PR из release/X.Y.Z смержен в develop:
+# Когда PR из release/X.Y.Z смержен в develop (обычно через squash — один коммит на релиз):
 #   1) собирается установщик (NSIS) с подписью для автообновления и публикуется GitHub Release X.Y.Z
-#      (тег X.Y.Z ставится на последний коммит релизной ветки, в релиз кладётся latest.json для обновлятора);
-#   2) main догоняет этот коммит (только fast-forward), релизная ветка удаляется.
+#      (тег X.Y.Z ставится на коммит релиза в develop, в релиз кладётся latest.json для обновлятора);
+#   2) main догоняет этот коммит (только fast-forward) — после релиза main == develop,
+#      релизная ветка удаляется.
 # Вручную: workflow_dispatch с номером релиза — например, если упал шаг после сборки.
 # Ветка release/X.Y.Z может быть уже удалена: тогда берётся смерженный PR из неё.
 # Уже опубликованный релиз повторно не собирается.
@@ -51,7 +52,7 @@ jobs:
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          # MERGED — коммит в develop, которым смержили релизный PR (нужен, если мержили через squash)
+          # MERGED — коммит в develop, которым смержили релизный PR (при squash это и есть коммит релиза)
           MERGED=""
           if [ "$EVENT" = "workflow_dispatch" ]; then
             BRANCH="release/${MANUAL_BRANCH#release/}"
@@ -79,12 +80,11 @@ jobs:
           VERSION="${BRANCH#release/}"
           echo "Релиз $VERSION из $BRANCH ($SHA)"
 
-          # main должен догнать коммит релиза без merge. Обычно это последний коммит релизной ветки
-          # (PR смержен через «Create a merge commit»). Если смержили через squash, коммита ветки
-          # в develop нет — тогда релиз собирается из squash-коммита, он тоже в develop.
+          # Коммит релиза, на который встанут тег и main (fast-forward), должен быть в develop.
+          # Обычно релизный PR мержат через squash: коммита ветки в develop нет, релиз собирается
+          # из squash-коммита. Если смержили через merge commit — из последнего коммита ветки, тоже в develop.
           if ! git merge-base --is-ancestor "$SHA" origin/develop 2>/dev/null; then
             if [ -n "$MERGED" ] && git merge-base --is-ancestor "$MERGED" origin/develop 2>/dev/null; then
-              echo "::warning::$BRANCH смержена через squash — релиз собирается из коммита $MERGED в develop. В следующий раз мержите через «Create a merge commit»."
               SHA="$MERGED"
             else
               echo "::error::Коммит $SHA не попал в develop."
