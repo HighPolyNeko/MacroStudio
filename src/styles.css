@@ -81,6 +81,12 @@ input[type='checkbox'] { width: auto; }
 /* подпись кнопки меняется (проверка, процент, «последняя версия») — без переноса, чтобы высота не прыгала */
 .update-box > button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ok-mark { color: var(--ok); font-weight: 700; }
+/* подпись «иконка + текст»: одна короткая анимация на все подписи (< 0.4 с, один раз при появлении) */
+.label-icon { display: inline-block; }
+.icon-label.animated .label-icon { animation: label-pop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.icon-label.animated .label-text { animation: label-fade 0.25s ease-out both; }
+@keyframes label-pop { from { transform: scale(0) rotate(-45deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes label-fade { from { opacity: 0; } to { opacity: 1; } }
 .version-line { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .icon-btn {
   width: 18px; height: 18px; padding: 0; border-radius: 50%;

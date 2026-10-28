@@ -35,6 +35,8 @@ export function useUpdater(notify: (text: string) => void) {
   const [checking, setChecking] = useState(false);
   // «у вас последняя версия» показывается на самой кнопке несколько секунд, а не всплывашкой
   const [upToDate, setUpToDate] = useState(false);
+  // анимировать смену подписи кнопки только после первой ручной проверки, не при запуске
+  const [labelAnimated, setLabelAnimated] = useState(false);
   useEffect(() => {
     if (!upToDate) return;
     const t = setTimeout(() => setUpToDate(false), UP_TO_DATE_MS);
@@ -61,6 +63,7 @@ export function useUpdater(notify: (text: string) => void) {
           setPanel('update');
         } else if (manual) {
           setUpToDate(true);
+          setLabelAnimated(true);
         }
       } catch (e) {
         if (manual) notify(`Не удалось проверить обновления: ${String(e)}`);
@@ -110,6 +113,7 @@ export function useUpdater(notify: (text: string) => void) {
     panel,
     checking,
     upToDate,
+    labelAnimated,
     checkNow: () => check(true),
     openWhatsNew: () => setPanel('whatsnew'),
     close: () => setPanel(null),
@@ -123,12 +127,7 @@ export type Updater = ReturnType<typeof useUpdater>;
 /** Подпись кнопки «Проверить обновления»: пока обновление качается или ждёт перезапуска — его статус. */
 export function updateButtonLabel(u: Updater): ReactNode {
   if (u.checking) return 'Проверяю…';
-  if (u.upToDate)
-    return (
-      <>
-        <span className="ok-mark">✓</span> У вас последняя версия
-      </>
-    );
+  if (u.upToDate) return <IconLabel key="ok" icon={<span className="ok-mark">✓</span>} text="У вас последняя версия" animate />;
   switch (u.upd?.phase) {
     case 'downloading':
       return u.upd.progress === null
@@ -136,10 +135,22 @@ export function updateButtonLabel(u: Updater): ReactNode {
         : `Скачивание ${Math.round(u.upd.progress * 100)}%`;
     case 'ready':
     case 'installing':
-      return '⟳ Установить обновление';
+      return <IconLabel key="install" icon="⟳" text="Установить обновление" animate={u.labelAnimated} />;
     default:
-      return '⟳ Проверить обновления';
+      return <IconLabel key="check" icon="⟳" text="Проверить обновления" animate={u.labelAnimated} />;
   }
+}
+
+/**
+ * Подпись «иконка + текст». С animate иконка «выпрыгивает», текст проявляется — одна анимация
+ * на все подписи; срабатывает при появлении подписи (смена key пересоздаёт элемент).
+ */
+function IconLabel({ icon, text, animate = false }: { icon: ReactNode; text: string; animate?: boolean }) {
+  return (
+    <span className={animate ? 'icon-label animated' : 'icon-label'}>
+      <span className="label-icon">{icon}</span> <span className="label-text">{text}</span>
+    </span>
+  );
 }
 
 /* ---------- Карточка ---------- */
