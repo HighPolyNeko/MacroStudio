@@ -209,6 +209,16 @@ button.link:hover { text-decoration: underline; }
 .menu-item.danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.12); }
 .menu-item:disabled { color: var(--muted); cursor: default; }
 .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.menu-item.active { color: var(--accent); background: rgba(91, 140, 255, 0.1); }
+
+/* выпадающий список (Dropdown): поле как у input, список — ContextMenu */
+.dropdown {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+}
+.dropdown.open { border-color: var(--accent); }
+.dropdown-value { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dropdown-arrow { color: var(--muted); font-size: 11px; }
 .inspector {
   grid-column: 2; grid-row: 1 / span 2; background: var(--panel);
   border-left: 1px solid var(--border); overflow: auto;

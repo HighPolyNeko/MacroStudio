@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react';
 import { isTauri, pickPoint } from './api';
 import { ContextMenu, MenuItem, SubMenu } from './ContextMenu';
+import { Dropdown } from './Dropdown';
 import { KeyCapture } from './KeyCapture';
 import { defaultData, newId } from './macros';
 import { META, nodeTypes } from './nodes';
@@ -351,13 +352,7 @@ function Select({
   return (
     <label className="field">
       <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
-          </option>
-        ))}
-      </select>
+      <Dropdown value={value} options={options} onChange={onChange} />
     </label>
   );
 }

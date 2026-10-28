@@ -11,12 +11,15 @@ const SUBMENU_H = 240;
 export function ContextMenu({
   x,
   y,
+  minWidth,
   onClose,
   children,
 }: {
   /** Точка экрана (clientX/clientY), где открыть меню. */
   x: number;
   y: number;
+  /** Не уже этого (выпадающий список — по ширине поля). */
+  minWidth?: number;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -54,7 +57,7 @@ export function ContextMenu({
     <div
       ref={ref}
       className={`ctx-menu ${pos.flip ? 'flip' : ''} ${pos.up ? 'up' : ''}`}
-      style={{ position: 'fixed', left: pos.left, top: pos.top }}
+      style={{ position: 'fixed', left: pos.left, top: pos.top, minWidth }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {children}
@@ -65,14 +68,17 @@ export function ContextMenu({
 export function MenuItem({
   onClick,
   danger = false,
+  active = false,
   children,
 }: {
   onClick: () => void;
   danger?: boolean;
+  /** Выбранный пункт (в выпадающем списке). */
+  active?: boolean;
   children: ReactNode;
 }) {
   return (
-    <button className={`menu-item ${danger ? 'danger' : ''}`} onClick={onClick}>
+    <button className={`menu-item ${danger ? 'danger' : ''} ${active ? 'active' : ''}`} onClick={onClick}>
       {children}
     </button>
   );

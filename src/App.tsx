@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from './api';
+import { Dropdown } from './Dropdown';
 import { Editor } from './Editor';
 import { KeyCapture } from './KeyCapture';
 import { MacroList } from './MacroList';
@@ -276,21 +277,15 @@ export default function App() {
             </label>
             <label className="field">
               <span>Папка</span>
-              <select
-                value={folders.some((f) => f.id === selected.folderId) ? selected.folderId : ''}
-                onChange={(e) =>
-                  e.target.value
-                    ? update(selected.id, { folderId: e.target.value })
+              <Dropdown
+                value={folders.some((f) => f.id === selected.folderId) ? selected.folderId! : ''}
+                options={[['', 'Без папки'], ...folders.map((f): [string, string] => [f.id, f.name])]}
+                onChange={(v) =>
+                  v
+                    ? update(selected.id, { folderId: v })
                     : setMacros((ms) => ms.map((m) => (m.id === selected.id ? withoutFolder(m) : m)))
                 }
-              >
-                <option value="">Без папки</option>
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <label className="field">
               <span>Горячая клавиша</span>
@@ -304,18 +299,11 @@ export default function App() {
             </label>
             <label className="field">
               <span>Режим запуска</span>
-              <select
+              <Dropdown
                 value={selected.trigger.mode}
-                onChange={(e) =>
-                  update(selected.id, { trigger: { ...selected.trigger, mode: e.target.value as TriggerMode } })
-                }
-              >
-                {(Object.keys(MODE_LABELS) as TriggerMode[]).map((m) => (
-                  <option key={m} value={m}>
-                    {MODE_LABELS[m]}
-                  </option>
-                ))}
-              </select>
+                options={(Object.keys(MODE_LABELS) as TriggerMode[]).map((m): [TriggerMode, string] => [m, MODE_LABELS[m]])}
+                onChange={(mode) => update(selected.id, { trigger: { ...selected.trigger, mode } })}
+              />
               <small>В режимах «вкл/выкл» и «пока зажата» макрос повторяется по кругу.</small>
             </label>
             <label className="check">
