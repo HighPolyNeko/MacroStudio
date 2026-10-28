@@ -91,13 +91,14 @@ jobs:
         id: notes
         env:
           SHA: ${{ steps.meta.outputs.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # пункты из раздела «Для release notes» PR, вошедших в релиз (см. scripts/release-notes.sh)
           PREV=$(git describe --tags --abbrev=0 "$SHA^" 2>/dev/null || true)
-          RANGE="${PREV:+$PREV..}$SHA"
           {
             echo 'body<<EOF_NOTES'
-            echo "## Изменения${PREV:+ с $PREV}"
-            git log --no-merges --format='- %s' "$RANGE"
+            bash scripts/release-notes.sh "${PREV:+$PREV..}$SHA" "$REPO"
             echo 'EOF_NOTES'
           } >> "$GITHUB_OUTPUT"
 
