@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as api from './api';
 import type { ReleaseInfo, Update } from './api';
 
@@ -121,9 +121,14 @@ export function useUpdater(notify: (text: string) => void) {
 export type Updater = ReturnType<typeof useUpdater>;
 
 /** Подпись кнопки «Проверить обновления»: пока обновление качается или ждёт перезапуска — его статус. */
-export function updateButtonLabel(u: Updater): string {
+export function updateButtonLabel(u: Updater): ReactNode {
   if (u.checking) return 'Проверяю…';
-  if (u.upToDate) return '✓ У вас последняя версия';
+  if (u.upToDate)
+    return (
+      <>
+        <span className="ok-mark">✓</span> У вас последняя версия
+      </>
+    );
   switch (u.upd?.phase) {
     case 'downloading':
       return u.upd.progress === null

@@ -80,6 +80,7 @@ input[type='checkbox'] { width: auto; }
 .update-box small { text-align: center; }
 /* подпись кнопки меняется (проверка, процент, «последняя версия») — без переноса, чтобы высота не прыгала */
 .update-box > button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ok-mark { color: var(--ok); font-weight: 700; }
 .version-line { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .icon-btn {
   width: 18px; height: 18px; padding: 0; border-radius: 50%;
