@@ -23,19 +23,27 @@ interface Props {
   onExportMacro: (m: MacroDef) => void;
   onDuplicateMacro: (m: MacroDef) => void;
   onRemoveMacro: (id: string) => void;
+  /** Переставить папку перед/после папки anchorId. */
+  onMoveFolder: (id: string, anchorId: string, after: boolean) => void;
 }
 
-/** Куда сейчас бросят перетаскиваемый макрос (для подсветки). */
+/** Куда сейчас бросят перетаскиваемый макрос или папку (для подсветки). */
 type DropTarget =
   | { kind: 'macro'; id: string; after: boolean }
   | { kind: 'folder'; id: string }
-  | { kind: 'root' };
+  | { kind: 'root' }
+  /** папку — перед/после другой папки */
+  | { kind: 'folder-pos'; id: string; after: boolean };
 
 /** Состояние, общее для всех строк списка: перетаскивание и меню по ПКМ. */
 interface ListState {
+  /** Перетаскиваемый макрос. */
   dragId: string | null;
+  /** Перетаскиваемая папка. */
+  dragFolder: string | null;
   drop: DropTarget | null;
   setDragId: (id: string | null) => void;
+  setDragFolder: (id: string | null) => void;
   setDrop: (t: DropTarget | null) => void;
   openMenu: (m: MacroDef, x: number, y: number) => void;
 }
@@ -43,9 +51,18 @@ interface ListState {
 /** Список макросов слева: папки (например, по играм), в конце — макросы без папки. */
 export function MacroList(p: Props) {
   const [dragId, setDragId] = useState<string | null>(null);
+  const [dragFolder, setDragFolder] = useState<string | null>(null);
   const [drop, setDrop] = useState<DropTarget | null>(null);
   const [menu, setMenu] = useState<{ m: MacroDef; x: number; y: number } | null>(null);
-  const ls: ListState = { dragId, drop, setDragId, setDrop, openMenu: (m, x, y) => setMenu({ m, x, y }) };
+  const ls: ListState = {
+    dragId,
+    dragFolder,
+    drop,
+    setDragId,
+    setDragFolder,
+    setDrop,
+    openMenu: (m, x, y) => setMenu({ m, x, y }),
+  };
 
   const known = new Set(p.folders.map((f) => f.id));
   const loose = p.macros.filter((m) => !m.folderId || !known.has(m.folderId));
@@ -55,26 +72,32 @@ export function MacroList(p: Props) {
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     const id = dragId;
+    const folderId = dragFolder;
     setDragId(null);
+    setDragFolder(null);
     setDrop(null);
+    if (folderId && drop?.kind === 'folder-pos' && drop.id !== folderId) {
+      p.onMoveFolder(folderId, drop.id, drop.after);
+      return;
+    }
     if (!id || !drop) return;
     if (drop.kind === 'macro') {
       const target = p.macros.find((m) => m.id === drop.id);
       if (target && target.id !== id) p.onMoveMacro(id, { folderId: folderOf(target), anchorId: target.id, after: drop.after });
     } else if (drop.kind === 'folder') {
       p.onMoveMacro(id, { folderId: drop.id });
-    } else {
+    } else if (drop.kind === 'root') {
       p.onMoveMacro(id, {});
     }
   };
 
   return (
     <>
-      <ul className="macro-list" onDrop={onDrop} onDragOver={(e) => dragId && e.preventDefault()}>
+      <ul className="macro-list" onDrop={onDrop} onDragOver={(e) => (dragId || dragFolder) && e.preventDefault()}>
         {p.folders.map((f) => {
           const inside = p.macros.filter((m) => m.folderId === f.id);
           return (
-            <li key={f.id} className="folder">
+            <li key={f.id} className={`folder ${dragFolder === f.id ? 'dragging' : ''}`}>
               <FolderHead {...p} ls={ls} folder={f} macros={inside} />
               {!f.collapsed && (
                 <ul className="folder-items">
@@ -157,12 +180,39 @@ function FolderHead({ folder: f, macros, ls, ...p }: Props & { folder: Folder; m
   const enabledCount = macros.filter((m) => m.enabled).length;
   const all = macros.length > 0 && enabledCount === macros.length;
   const some = enabledCount > 0 && !all;
-  const over = ls.drop?.kind === 'folder' && ls.drop.id === f.id;
+  const d = ls.drop;
+  const over =
+    d?.kind === 'folder' && d.id === f.id
+      ? 'drop-over'
+      : d?.kind === 'folder-pos' && d.id === f.id
+        ? d.after
+          ? 'drop-after'
+          : 'drop-before'
+        : '';
 
   return (
     <div
-      className={`folder-head ${over ? 'drop-over' : ''}`}
+      className={`folder-head ${over}`}
+      // папку тянут за шапку (кроме режима переименования — там выделяют текст)
+      draggable={p.renamingId !== f.id}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', f.id);
+        ls.setDragFolder(f.id);
+      }}
+      onDragEnd={() => {
+        ls.setDragFolder(null);
+        ls.setDrop(null);
+      }}
       onDragOver={(e) => {
+        if (ls.dragFolder) {
+          // папку над другой папкой: верхняя половина шапки — встать перед ней, нижняя — после
+          if (ls.dragFolder === f.id) return;
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          ls.setDrop({ kind: 'folder-pos', id: f.id, after: e.clientY > r.top + r.height / 2 });
+          return;
+        }
         if (!ls.dragId) return;
         e.preventDefault();
         ls.setDrop({ kind: 'folder', id: f.id });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   addEdge,
   Background,
+  ControlButton,
   Controls,
   ReactFlow,
   ReactFlowProvider,
@@ -15,9 +16,10 @@ import {
   type XYPosition,
 } from '@xyflow/react';
 import { isTauri, pickPoint } from './api';
-import { ContextMenu, MenuItem, SubMenu } from './ContextMenu';
+import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from './ContextMenu';
 import { Dropdown } from './Dropdown';
 import { KeyCapture } from './KeyCapture';
+import { arrangeNodes } from './layout';
 import { defaultData, newId } from './macros';
 import { META, nodeTypes } from './nodes';
 import type { MacroDef, MacroEdge, MacroNode, NodeType } from './types';
@@ -198,6 +200,13 @@ function EditorInner({ macro, onUpdate, children }: Props) {
 
   const patchData = (id: string, patch: Record<string, unknown>) =>
     setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+  /** Расставить узлы по схеме (см. layout.ts) и показать схему целиком. */
+  const arrange = () => {
+    setNodes((ns) => arrangeNodes(ns, edgesRef.current));
+    // после того как React Flow применит новые позиции
+    setTimeout(() => rf.fitView({ maxZoom: 1, duration: 200 }), 50);
+  };
+
   const removeNode = (id: string) => {
     if (nodes.find((n) => n.id === id)?.type === 'start') return;
     setNodes((ns) => ns.filter((n) => n.id !== id));
@@ -236,12 +245,20 @@ function EditorInner({ macro, onUpdate, children }: Props) {
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={20} />
-          <Controls showInteractive={false} />
+          <Controls showInteractive={false}>
+            <ControlButton onClick={arrange} title="Упорядочить узлы">
+              ⇅
+            </ControlButton>
+          </Controls>
         </ReactFlow>
         {menu && (
           <NodeMenu
             menu={menu}
             onClose={closeMenu}
+            onArrange={() => {
+              arrange();
+              closeMenu();
+            }}
             onPick={(t) => {
               createNode(t, menu.at, menu.from);
               closeMenu();
@@ -277,10 +294,12 @@ export function Editor(props: Props) {
 function NodeMenu({
   menu,
   onPick,
+  onArrange,
   onClose,
 }: {
   menu: MenuState;
   onPick: (t: NodeType) => void;
+  onArrange: () => void;
   onClose: () => void;
 }) {
   const list = CREATABLE.map((t) => (
@@ -298,7 +317,11 @@ function NodeMenu({
           {list}
         </>
       ) : (
-        <SubMenu label="Создать">{list}</SubMenu>
+        <>
+          <SubMenu label="Создать">{list}</SubMenu>
+          <MenuSeparator />
+          <MenuItem onClick={onArrange}>Упорядочить узлы</MenuItem>
+        </>
       )}
     </ContextMenu>
   );

@@ -93,6 +93,8 @@ input[type='checkbox'] { width: auto; }
 .macro-list li.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .macro-list li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .folder-head.drop-over { background: rgba(91, 140, 255, 0.15); border-radius: 6px; }
+.folder-head.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.folder-head.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .macro-list li.drop-root {
   justify-content: center; color: var(--muted); font-size: 12px;
   border: 1px dashed var(--border); margin-top: 4px; cursor: default;
@@ -281,3 +283,6 @@ html.picker-mode, html.picker-mode body { background: transparent; }
   background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px;
   padding: 8px 14px; pointer-events: none;
 }
+
+/* кнопки масштаба холста: небольшой промежуток, без него рамки кнопок наезжают друг на друга */
+.react-flow__controls { gap: 2px; }
