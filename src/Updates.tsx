@@ -10,6 +10,8 @@ import type { ReleaseInfo, Update } from './api';
  * → установка (приложение закрывается, установщик запускает новую версию).
  */
 
+/** Сколько держать на кнопке «✓ У вас последняя версия». */
+const UP_TO_DATE_MS = 4000;
 /** Сколько пунктов изменений показывать в свёрнутом виде. */
 const SHORT_ITEMS = 3;
 
@@ -31,6 +33,13 @@ export function useUpdater(notify: (text: string) => void) {
   const [upd, setUpd] = useState<UpdateState | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [checking, setChecking] = useState(false);
+  // «у вас последняя версия» показывается на самой кнопке несколько секунд, а не всплывашкой
+  const [upToDate, setUpToDate] = useState(false);
+  useEffect(() => {
+    if (!upToDate) return;
+    const t = setTimeout(() => setUpToDate(false), UP_TO_DATE_MS);
+    return () => clearTimeout(t);
+  }, [upToDate]);
   const updRef = useRef(upd);
   updRef.current = upd;
 
@@ -43,6 +52,7 @@ export function useUpdater(notify: (text: string) => void) {
         return;
       }
       setChecking(true);
+      setUpToDate(false);
       try {
         const update = await api.findUpdate(manual);
         if (update) {
@@ -50,7 +60,7 @@ export function useUpdater(notify: (text: string) => void) {
           setUpd({ update, notes, phase: 'available', progress: 0 });
           setPanel('update');
         } else if (manual) {
-          notify('Установлена последняя версия.');
+          setUpToDate(true);
         }
       } catch (e) {
         if (manual) notify(`Не удалось проверить обновления: ${String(e)}`);
@@ -99,6 +109,7 @@ export function useUpdater(notify: (text: string) => void) {
     upd,
     panel,
     checking,
+    upToDate,
     checkNow: () => check(true),
     openWhatsNew: () => setPanel('whatsnew'),
     close: () => setPanel(null),
@@ -112,6 +123,7 @@ export type Updater = ReturnType<typeof useUpdater>;
 /** Подпись кнопки «Проверить обновления»: пока обновление качается или ждёт перезапуска — его статус. */
 export function updateButtonLabel(u: Updater): string {
   if (u.checking) return 'Проверяю…';
+  if (u.upToDate) return '✓ У вас последняя версия';
   switch (u.upd?.phase) {
     case 'downloading':
       return u.upd.progress === null
