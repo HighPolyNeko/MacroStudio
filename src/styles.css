@@ -78,6 +78,52 @@ input[type='checkbox'] { width: auto; }
   margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border);
 }
 .update-box small { text-align: center; }
+.version-line { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.icon-btn {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  font: italic 600 11px/16px Georgia, serif; color: var(--muted);
+}
+.icon-btn:hover { color: var(--text); }
+
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+button.link {
+  background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; align-self: flex-start;
+}
+button.link:hover { text-decoration: underline; }
+
+/* карточка обновления: не модальная, под ней всё работает */
+.update-card {
+  position: fixed; right: 16px; bottom: 16px; z-index: 30;
+  width: 380px; max-height: calc(100vh - 32px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.update-card h3 { margin: 0; font-size: 16px; padding-right: 24px; }
+.update-card .muted { margin: 0; }
+.card-close {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; padding: 0;
+  background: none; border: none; color: var(--muted); font-size: 18px; line-height: 1;
+}
+.card-close:hover { color: var(--text); }
+.card-actions button { flex: 1; }
+.notes { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.notes h4 { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.notes p { margin: 0; }
+.release { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.release-head { display: flex; align-items: center; gap: 8px; }
+.release-head .muted { margin-left: auto; font-size: 12px; }
+.badge {
+  font-size: 11px; color: var(--ok); border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 999px; padding: 0 7px;
+}
+.update-progress { display: flex; flex-direction: column; gap: 6px; }
+.progress { height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
+.progress.indeterminate > div { width: 35%; animation: progress-run 1.2s ease-in-out infinite; }
+@keyframes progress-run { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
 
 /* центр */
 .main { position: relative; min-width: 0; min-height: 0; display: flex; }

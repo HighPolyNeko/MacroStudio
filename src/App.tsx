@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from './api';
 import { Editor } from './Editor';
 import { KeyCapture } from './KeyCapture';
+import { UpdateCard, updateButtonLabel, useUpdater } from './Updates';
 import { newId, newMacro, normalizeMacro, sampleMacro, semanticKey, toExport } from './macros';
 import { MODE_LABELS, type MacroDef, type TriggerMode } from './types';
 
@@ -28,8 +29,6 @@ export default function App() {
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [notice, setNotice] = useState<string | null>(null);
-  const [version, setVersion] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
 
   const selected = macros.find((m) => m.id === selectedId) ?? macros[0];
 
@@ -79,22 +78,8 @@ export default function App() {
     };
   }, []);
 
-  // обновление с GitHub при запуске
-  useEffect(() => {
-    api.appVersion().then(setVersion);
-    api.checkForUpdates().catch((e) => setNotice(`Не удалось обновить: ${String(e)}`));
-  }, []);
-
-  const checkUpdatesNow = async () => {
-    setChecking(true);
-    try {
-      if ((await api.checkForUpdates(true)) === 'none') setNotice('Установлена последняя версия.');
-    } catch (e) {
-      setNotice(`Не удалось проверить обновления: ${String(e)}`);
-    } finally {
-      setChecking(false);
-    }
-  };
+  // обновление с GitHub: проверка при запуске, карточка обновления, «что нового»
+  const updater = useUpdater(setNotice);
 
   useEffect(() => {
     if (!notice) return;
@@ -204,16 +189,23 @@ export default function App() {
           <small>Аварийная остановка с клавиатуры — клавиша Pause (Break).</small>
           <div className="update-box">
             <button
-              disabled={!api.isTauri() || checking}
+              disabled={!api.isTauri() || updater.checking}
               title={api.isTauri() ? undefined : 'Работает только в приложении'}
-              onClick={checkUpdatesNow}
+              onClick={updater.checkNow}
             >
-              {checking ? 'Проверяю…' : '⟳ Проверить обновления'}
+              {updateButtonLabel(updater)}
             </button>
-            <small>{version ? `Macro Studio ${version}` : 'Macro Studio'}</small>
+            <div className="version-line">
+              <small>{updater.version ? `Macro Studio ${updater.version}` : 'Macro Studio'}</small>
+              <button className="icon-btn" title="Что нового" onClick={updater.openWhatsNew}>
+                i
+              </button>
+            </div>
           </div>
         </div>
       </aside>
+
+      <UpdateCard u={updater} />
 
       <main className="main">
         {notice && <div className="notice">{notice}</div>}
