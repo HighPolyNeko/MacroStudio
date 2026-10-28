@@ -202,16 +202,15 @@ export default function App() {
             Остановить всё
           </button>
           <small>Аварийная остановка с клавиатуры — клавиша Pause (Break).</small>
-          <div className="version-row">
-            <small>{version ? `Версия ${version}` : 'Версия —'}</small>
+          <div className="update-box">
             <button
-              className="ghost"
               disabled={!api.isTauri() || checking}
               title={api.isTauri() ? undefined : 'Работает только в приложении'}
               onClick={checkUpdatesNow}
             >
-              {checking ? 'Проверяю…' : 'Проверить обновления'}
+              {checking ? 'Проверяю…' : '⟳ Проверить обновления'}
             </button>
+            <small>{version ? `Macro Studio ${version}` : 'Macro Studio'}</small>
           </div>
         </div>
       </aside>

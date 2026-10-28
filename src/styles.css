@@ -73,7 +73,11 @@ input[type='checkbox'] { width: auto; }
 .play { padding: 3px 9px; flex: none; }
 .side-foot { padding: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .side-foot small { color: var(--muted); }
-.version-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.update-box {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.update-box small { text-align: center; }
 
 /* центр */
 .main { position: relative; min-width: 0; min-height: 0; display: flex; }
