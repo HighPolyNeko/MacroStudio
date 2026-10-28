@@ -114,6 +114,8 @@ fn finish_pick_point(app: AppHandle, cancel: bool) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let (input, keys) = platform_backends();

@@ -77,6 +77,11 @@ export default function App() {
     };
   }, []);
 
+  // обновление с GitHub при запуске
+  useEffect(() => {
+    api.checkForUpdates().catch((e) => setNotice(`Не удалось обновить: ${String(e)}`));
+  }, []);
+
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(null), 6000);
