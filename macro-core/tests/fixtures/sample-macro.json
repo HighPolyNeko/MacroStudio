@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "name": "Автокликер (пример)",
+  "enabled": true,
+  "trigger": {
+    "key": "F6",
+    "mode": "toggle"
+  },
+  "nodes": [
+    {
+      "id": "n_pdhxe0pww",
+      "type": "start",
+      "position": {
+        "x": 200,
+        "y": 40
+      },
+      "data": {}
+    },
+    {
+      "id": "n_c4vce9pww",
+      "type": "loop",
+      "position": {
+        "x": 200,
+        "y": 160
+      },
+      "data": {
+        "count": 0
+      }
+    },
+    {
+      "id": "n_qe4ywwpww",
+      "type": "mouse",
+      "position": {
+        "x": 440,
+        "y": 250
+      },
+      "data": {
+        "button": "left",
+        "action": "click",
+        "holdMs": 30
+      }
+    },
+    {
+      "id": "n_zemgdcpww",
+      "type": "delay",
+      "position": {
+        "x": 440,
+        "y": 380
+      },
+      "data": {
+        "ms": 50,
+        "jitterMs": 20
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_qygpf3pww",
+      "source": "n_pdhxe0pww",
+      "target": "n_c4vce9pww",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "e_kdh6znpww",
+      "source": "n_c4vce9pww",
+      "target": "n_qe4ywwpww",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "e_6if6gmpww",
+      "source": "n_qe4ywwpww",
+      "target": "n_zemgdcpww",
+      "sourceHandle": "next"
+    }
+  ]
+}
