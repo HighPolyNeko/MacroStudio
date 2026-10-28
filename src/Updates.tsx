@@ -6,12 +6,10 @@ import type { ReleaseInfo, Update } from './api';
  * Обновление приложения: карточка в правом нижнем углу.
  * Она не модальная — под ней всё работает, макросы запускаются (и с горячих клавиш, и кнопками).
  *
- * Шаги: доступно → скачивание (полоса 0–90%) → скачано, ждём «Перезапустить» (90%)
- * → установка (100%, приложение закрывается, установщик запускает новую версию).
+ * Шаги: доступно → скачивание (полоса 0–100%) → скачано, полоса полная, ждём «Перезапустить»
+ * → установка (приложение закрывается, установщик запускает новую версию).
  */
 
-/** Доля полосы прогресса на скачивание; остаток — установка. */
-const DOWNLOAD_SHARE = 0.9;
 /** Сколько пунктов изменений показывать в свёрнутом виде. */
 const SHORT_ITEMS = 3;
 
@@ -75,9 +73,9 @@ export function useUpdater(notify: (text: string) => void) {
     setUpd({ ...cur, phase: 'downloading', progress: 0, error: undefined });
     try {
       await api.downloadUpdate(cur.update, (done, total) =>
-        setUpd((s) => s && { ...s, progress: total ? Math.min(1, done / total) * DOWNLOAD_SHARE : null }),
+        setUpd((s) => s && { ...s, progress: total ? Math.min(1, done / total) : null }),
       );
-      setUpd((s) => s && { ...s, phase: 'ready', progress: DOWNLOAD_SHARE });
+      setUpd((s) => s && { ...s, phase: 'ready', progress: 1 });
       setPanel('update');
     } catch (e) {
       setUpd((s) => s && { ...s, phase: 'error', error: `Не удалось скачать: ${String(e)}` });
@@ -118,7 +116,7 @@ export function updateButtonLabel(u: Updater): string {
     case 'downloading':
       return u.upd.progress === null
         ? 'Скачивание обновления…'
-        : `Скачивание ${Math.round((u.upd.progress / DOWNLOAD_SHARE) * 100)}%`;
+        : `Скачивание ${Math.round(u.upd.progress * 100)}%`;
     case 'ready':
     case 'installing':
       return '⟳ Установить обновление';
