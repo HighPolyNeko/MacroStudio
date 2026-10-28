@@ -1,0 +1,38 @@
+name: Release version
+
+# Создана ветка release/X.Y.Z -> в ней появляется коммит с версией X.Y.Z во всех файлах.
+# Так у релизной ветки всегда есть отличие от develop и PR release -> develop можно открыть.
+# Пушит deploy key: у него исключение в правиле для release/** (GITHUB_TOKEN туда пушить не может,
+# и его пуш не запустил бы CI).
+on: create
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    if: github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/')
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.ref }}
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Версия из имени ветки
+        env:
+          BRANCH: ${{ github.event.ref }}
+        run: |
+          VERSION="${BRANCH#release/}"
+          node scripts/set-version.mjs "$VERSION"
+          if git diff --quiet; then
+            echo "::error::Версия уже $VERSION — коммита не будет, и PR в develop окажется пустым. Выбери номер больше текущего."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): версия $VERSION"
+          git push origin "HEAD:refs/heads/$BRANCH"

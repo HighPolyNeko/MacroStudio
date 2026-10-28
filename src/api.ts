@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, once } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { ask, open, save } from '@tauri-apps/plugin-dialog';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { check } from '@tauri-apps/plugin-updater';
 import type { MacroDef, MacroReport, StatusEvent } from './types';
 
 export const isTauri = () =>
@@ -27,6 +29,31 @@ export async function stopAll() {
 export async function onStatus(cb: (e: StatusEvent) => void): Promise<() => void> {
   if (!isTauri()) return () => {};
   return listen<StatusEvent>('macro-status', (e) => cb(e.payload));
+}
+
+/**
+ * Проверяет релизы на GitHub. Если есть версия новее — спрашивает и ставит её с перезапуском.
+ * Ошибка проверки (нет сети, ещё нет ни одного релиза) не мешает работе: просто нет обновления.
+ * В режиме разработки (tauri dev) не проверяет.
+ */
+export async function checkForUpdates(): Promise<void> {
+  if (!isTauri() || import.meta.env.DEV) return;
+  let update;
+  try {
+    update = await check();
+  } catch (e) {
+    console.warn('Проверка обновлений не удалась:', e);
+    return;
+  }
+  if (!update) return;
+  const yes = await ask(
+    `Доступна версия ${update.version} (у вас ${update.currentVersion}).\n\n` +
+      'Установить сейчас? Запущенные макросы остановятся, приложение перезапустится.',
+    { title: 'Обновление Macro Studio', kind: 'info', okLabel: 'Обновить', cancelLabel: 'Позже' },
+  );
+  if (!yes) return;
+  await update.downloadAndInstall();
+  await relaunch();
 }
 
 /** Это окно выбора точки (а не главное окно)? */
