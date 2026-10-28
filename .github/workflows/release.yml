@@ -4,8 +4,9 @@ name: Release
 #   1) собирается установщик (NSIS) с подписью для автообновления и публикуется GitHub Release X.Y.Z
 #      (тег X.Y.Z ставится на последний коммит релизной ветки, в релиз кладётся latest.json для обновлятора);
 #   2) main догоняет этот коммит (только fast-forward), релизная ветка удаляется.
-# Вручную: workflow_dispatch с номером релиза (ветка release/X.Y.Z должна существовать) —
-# например, если упал шаг после сборки. Уже опубликованный релиз повторно не собирается.
+# Вручную: workflow_dispatch с номером релиза — например, если упал шаг после сборки.
+# Ветка release/X.Y.Z может быть уже удалена: тогда берётся смерженный PR из неё.
+# Уже опубликованный релиз повторно не собирается.
 #
 # Триггер — push в develop (мерж PR тоже push), а не pull_request_target: его GitHub ограничивает
 # в публичных репозиториях. Workflow и секреты environment "release" берутся из develop,
@@ -50,11 +51,19 @@ jobs:
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # MERGED — коммит в develop, которым смержили релизный PR (нужен, если мержили через squash)
+          MERGED=""
           if [ "$EVENT" = "workflow_dispatch" ]; then
             BRANCH="release/${MANUAL_BRANCH#release/}"
-            git rev-parse -q --verify "origin/$BRANCH" >/dev/null \
-              || { echo "::error::Ветки $BRANCH нет в репозитории"; exit 1; }
-            SHA=$(git rev-parse "origin/$BRANCH")
+            if git rev-parse -q --verify "origin/$BRANCH" >/dev/null; then
+              SHA=$(git rev-parse "origin/$BRANCH")
+            else
+              # ветку уже удалили после мержа — берём смерженный PR из неё
+              PR=$(gh pr list -R "$REPO" --state merged --head "$BRANCH" --json headRefOid,mergeCommit \
+                --jq '.[0] // empty | "\(.headRefOid) \(.mergeCommit.oid)"')
+              [ -n "$PR" ] || { echo "::error::Нет ни ветки $BRANCH, ни смерженного PR из неё"; exit 1; }
+              read -r SHA MERGED <<< "$PR"
+            fi
           else
             # смерженный PR из release/**, которому принадлежит этот коммит
             # (ветку могли удалить при мерже, поэтому берём коммит, а не имя)
@@ -65,14 +74,23 @@ jobs:
               exit 0
             fi
             read -r BRANCH SHA <<< "$PR"
+            MERGED="$PUSH_SHA"
           fi
           VERSION="${BRANCH#release/}"
           echo "Релиз $VERSION из $BRANCH ($SHA)"
 
-          # main должен догнать именно этот коммит без merge, а он есть в develop,
-          # только если PR смержен через «Create a merge commit» (не squash)
-          git merge-base --is-ancestor "$SHA" origin/develop \
-            || { echo "::error::Коммит $SHA не попал в develop. Релизную ветку нужно мержить через «Create a merge commit», не squash."; exit 1; }
+          # main должен догнать коммит релиза без merge. Обычно это последний коммит релизной ветки
+          # (PR смержен через «Create a merge commit»). Если смержили через squash, коммита ветки
+          # в develop нет — тогда релиз собирается из squash-коммита, он тоже в develop.
+          if ! git merge-base --is-ancestor "$SHA" origin/develop 2>/dev/null; then
+            if [ -n "$MERGED" ] && git merge-base --is-ancestor "$MERGED" origin/develop 2>/dev/null; then
+              echo "::warning::$BRANCH смержена через squash — релиз собирается из коммита $MERGED в develop. В следующий раз мержите через «Create a merge commit»."
+              SHA="$MERGED"
+            else
+              echo "::error::Коммит $SHA не попал в develop."
+              exit 1
+            fi
+          fi
 
           CONF_VERSION=$(git show "$SHA:src-tauri/tauri.conf.json" | jq -r .version)
           [ "$CONF_VERSION" = "$VERSION" ] \
