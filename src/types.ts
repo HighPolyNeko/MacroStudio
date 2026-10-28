@@ -42,6 +42,15 @@ export interface MacroDef {
   trigger: { key: string; mode: TriggerMode };
   nodes: MacroNode[];
   edges: MacroEdge[];
+  /** Папка в библиотеке (только для интерфейса: в экспорт не попадает, движку не важна). */
+  folderId?: string;
+}
+
+/** Папка библиотеки макросов (например, по играм). */
+export interface Folder {
+  id: string;
+  name: string;
+  collapsed: boolean;
 }
 
 export interface StatusEvent {

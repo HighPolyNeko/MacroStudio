@@ -68,6 +68,49 @@ input[type='checkbox'] { width: auto; }
 .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 .macro-meta { flex: 1; min-width: 0; }
 .macro-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.macro-name.off { color: var(--muted); }
+
+/* папки макросов */
+.side-actions button { padding-left: 6px; padding-right: 6px; }
+.macro-list li.folder { display: block; padding: 0; cursor: default; border: none; }
+.macro-list li.folder:hover { background: none; }
+.folder-head { display: flex; align-items: center; gap: 4px; padding: 6px 2px 4px; }
+.folder-arrow { width: 22px; height: 22px; padding: 0; border: none; background: none; color: var(--muted); }
+.folder-name {
+  flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: text;
+}
+.folder-count { margin-left: 6px; color: var(--muted); font-weight: 400; font-size: 12px; }
+.folder-input { flex: 1; min-width: 0; padding: 2px 6px; }
+.folder-btn { width: 22px; height: 22px; padding: 0; border: none; background: none; color: var(--muted); line-height: 1; }
+.folder-btn:hover:not(:disabled) { color: var(--text); }
+.folder-items { list-style: none; margin: 0 0 4px 12px; padding: 0 0 0 6px; border-left: 1px solid var(--border); }
+.folder-empty { color: var(--muted); font-size: 12px; cursor: default !important; padding: 4px 8px !important; }
+.folder-empty:hover { background: none !important; }
+
+/* перетаскивание макросов: линия — куда встанет, подсветка папки — бросить внутрь */
+.macro-list li.dragging { opacity: 0.4; }
+.macro-list li.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.macro-list li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.folder-head.drop-over { background: rgba(91, 140, 255, 0.15); border-radius: 6px; }
+.macro-list li.drop-root {
+  justify-content: center; color: var(--muted); font-size: 12px;
+  border: 1px dashed var(--border); margin-top: 4px; cursor: default;
+}
+.macro-list li.drop-root.over { border-color: var(--accent); color: var(--text); background: rgba(91, 140, 255, 0.1); }
+
+/* переключатель: вкл/выкл все макросы папки; some — включены не все */
+.switch {
+  position: relative; width: 30px; height: 16px; padding: 0; flex: none;
+  border-radius: 999px; background: var(--bg); border: 1px solid var(--border);
+}
+.switch span {
+  position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted); transition: transform 0.15s, background 0.15s;
+}
+.switch.on { background: rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.5); }
+.switch.on span { transform: translateX(14px); background: var(--ok); }
+.switch.some span { transform: translateX(7px); background: var(--ok); }
 .macro-sub { color: var(--muted); font-size: 12px; }
 .macro-err { color: #fca5a5; font-size: 12px; }
 .play { padding: 3px 9px; flex: none; }
@@ -157,7 +200,7 @@ button.link:hover { text-decoration: underline; }
 .chip { border-left-width: 4px; padding: 4px 10px; }
 .canvas { grid-column: 1; min-height: 0; position: relative; }
 
-/* меню создания узла (ПКМ по холсту, линия в пустоту) */
+/* контекстные меню (ContextMenu): создание узла на холсте, действия с макросом в списке */
 .ctx-menu {
   position: absolute; z-index: 20; min-width: 170px; padding: 4px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
@@ -175,8 +218,23 @@ button.link:hover { text-decoration: underline; }
 .menu-sub { position: relative; }
 /* подменю вплотную к пункту: в зазоре мышь «уходила» бы с пункта и подменю закрывалось */
 .submenu { top: -5px; left: 100%; }
-.submenu.flip { left: auto; right: 100%; }
-.submenu.up { top: auto; bottom: -5px; }
+/* направление подменю выбирает корневое меню (ContextMenu): не помещается справа/снизу — влево/вверх */
+.ctx-menu.flip .submenu { left: auto; right: 100%; }
+.ctx-menu.up .submenu { top: auto; bottom: -5px; }
+.menu-item.danger { color: #fca5a5; }
+.menu-item.danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.12); }
+.menu-item:disabled { color: var(--muted); cursor: default; }
+.menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.menu-item.active { color: var(--accent); background: rgba(91, 140, 255, 0.1); }
+
+/* выпадающий список (Dropdown): поле как у input, список — ContextMenu */
+.dropdown {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+}
+.dropdown.open { border-color: var(--accent); }
+.dropdown-value { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dropdown-arrow { color: var(--muted); font-size: 11px; }
 .inspector {
   grid-column: 2; grid-row: 1 / span 2; background: var(--panel);
   border-left: 1px solid var(--border); overflow: auto;
