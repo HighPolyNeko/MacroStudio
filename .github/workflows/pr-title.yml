@@ -1,0 +1,21 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверка формата заголовка (Conventional Commits)
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|chore|docs|refactor|test|ci|build|perf|style|revert)(\([^)]+\))?: .+'
+          if ! [[ "$TITLE" =~ $re ]]; then
+            echo "Заголовок '$TITLE' не подходит. Формат: тип: описание или тип(область): описание"
+            echo "Типы: feat, fix, chore, docs, refactor, test, ci, build, perf, style, revert"
+            exit 1
+          fi

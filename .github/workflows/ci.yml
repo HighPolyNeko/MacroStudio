@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, 'release/**', main]
+
+jobs:
+  build:
+    name: CI
+    # Windows: код ввода (macro-core/src/win.rs) компилируется только там
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            macro-core -> target
+            src-tauri -> target
+      - run: npm ci
+      - name: Интерфейс (tsc + vite build)
+        run: npm run build
+      - name: Тесты ядра
+        run: cargo test --locked --manifest-path macro-core/Cargo.toml
+      - name: Сборка оболочки Tauri
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml

@@ -1,0 +1,159 @@
+name: Release
+
+# Когда PR из release/X.Y.Z смержен в develop:
+#   1) собирается установщик (NSIS) с подписью для автообновления и публикуется GitHub Release X.Y.Z
+#      (тег X.Y.Z ставится на последний коммит релизной ветки, в релиз кладётся latest.json для обновлятора);
+#   2) main догоняет этот коммит (только fast-forward), релизная ветка удаляется.
+# Вручную: workflow_dispatch с номером релиза (ветка release/X.Y.Z должна существовать) —
+# например, если упал шаг после сборки. Уже опубликованный релиз повторно не собирается.
+#
+# pull_request_target: workflow берётся из develop, а секреты environment "release" доступны только ему.
+# Код релизной ветки собирается только после проверки, что он уже смержен в develop.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      release_branch:
+        description: 'Релиз: 0.2.0 или release/0.2.0'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/'))
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      branch: ${{ steps.meta.outputs.branch }}
+      sha: ${{ steps.meta.outputs.sha }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+      - name: Какой релиз
+        id: meta
+        env:
+          EVENT: ${{ github.event_name }}
+          MANUAL_BRANCH: ${{ inputs.release_branch }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            BRANCH="release/${MANUAL_BRANCH#release/}"
+            git rev-parse -q --verify "origin/$BRANCH" >/dev/null \
+              || { echo "::error::Ветки $BRANCH нет в репозитории"; exit 1; }
+            SHA=$(git rev-parse "origin/$BRANCH")
+          else
+            # ветку могли удалить при мерже, поэтому берём коммит, а не имя
+            BRANCH="$PR_HEAD_REF"
+            SHA="$PR_HEAD_SHA"
+          fi
+          VERSION="${BRANCH#release/}"
+
+          # main должен догнать именно этот коммит без merge, а он есть в develop,
+          # только если PR смержен через «Create a merge commit» (не squash)
+          git merge-base --is-ancestor "$SHA" origin/develop \
+            || { echo "::error::Коммит $SHA не попал в develop. Релизную ветку нужно мержить через «Create a merge commit», не squash."; exit 1; }
+
+          CONF_VERSION=$(git show "$SHA:src-tauri/tauri.conf.json" | node -p 'JSON.parse(require("fs").readFileSync(0)).version')
+          [ "$CONF_VERSION" = "$VERSION" ] \
+            || { echo "::error::В tauri.conf.json версия $CONF_VERSION, а ветка $BRANCH"; exit 1; }
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Релиз $VERSION уже опубликован, сборку пропускаю"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Список изменений
+        if: steps.meta.outputs.published != 'true'
+        id: notes
+        env:
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "$SHA^" 2>/dev/null || true)
+          RANGE="${PREV:+$PREV..}$SHA"
+          {
+            echo 'body<<EOF_NOTES'
+            echo "## Изменения${PREV:+ с $PREV}"
+            git log --no-merges --format='- %s' "$RANGE"
+            echo 'EOF_NOTES'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.meta.outputs.published != 'true'
+        with:
+          ref: ${{ steps.meta.outputs.sha }}
+      - uses: actions/setup-node@v4
+        if: steps.meta.outputs.published != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.meta.outputs.published != 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.meta.outputs.published != 'true'
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+        if: steps.meta.outputs.published != 'true'
+      - name: Сборка и публикация релиза
+        if: steps.meta.outputs.published != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ steps.meta.outputs.version }}
+          releaseName: Macro Studio ${{ steps.meta.outputs.version }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseCommitish: ${{ steps.meta.outputs.sha }}
+          releaseDraft: false
+          prerelease: false
+
+  promote:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+      - name: Fast-forward main и удаление релизной ветки
+        env:
+          SHA: ${{ needs.build.outputs.sha }}
+          BRANCH: ${{ needs.build.outputs.branch }}
+        run: |
+          git merge --ff-only "$SHA"
+          git push origin main
+
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            git push origin --delete "$BRANCH" \
+              || echo "::warning::Не удалось удалить ветку $BRANCH, удали её вручную"
+          else
+            echo "Ветка $BRANCH уже удалена"
+          fi
