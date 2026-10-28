@@ -119,3 +119,7 @@ input[type='checkbox'] { width: auto; }
 .mnode-port { position: absolute; right: -52px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--muted); pointer-events: none; }
 .mnode-port.body { right: -46px; }
 .react-flow__handle { width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); }
+/* WebView2 при дробном масштабе экрана оставлял обрывки тянущейся линии:
+   отдельный слой перерисовывается целиком, а 2px не теряются между пикселями. */
+.react-flow__connectionline { will-change: transform; }
+.react-flow { --xy-connectionline-stroke-width: 2; }
