@@ -7,11 +7,11 @@ name: Release
 # Вручную: workflow_dispatch с номером релиза (ветка release/X.Y.Z должна существовать) —
 # например, если упал шаг после сборки. Уже опубликованный релиз повторно не собирается.
 #
-# pull_request_target: workflow берётся из develop, а секреты environment "release" доступны только ему.
-# Код релизной ветки собирается только после проверки, что он уже смержен в develop.
+# Триггер — push в develop (мерж PR тоже push), а не pull_request_target: его GitHub ограничивает
+# в публичных репозиториях. Workflow и секреты environment "release" берутся из develop,
+# код релизной ветки собирается только после проверки, что он уже смержен в develop.
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches: [develop]
   workflow_dispatch:
     inputs:
@@ -27,22 +27,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/'))
-    runs-on: windows-latest
-    environment: release
-    permissions:
-      contents: write
+  # Был ли этот push мержем релизной ветки? Для обычных фич дальше ничего не запускается.
+  detect:
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
       branch: ${{ steps.meta.outputs.branch }}
       sha: ${{ steps.meta.outputs.sha }}
-    defaults:
-      run:
-        shell: bash
+      published: ${{ steps.meta.outputs.published }}
+      notes: ${{ steps.notes.outputs.body }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,8 +46,8 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           MANUAL_BRANCH: ${{ inputs.release_branch }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -63,22 +56,29 @@ jobs:
               || { echo "::error::Ветки $BRANCH нет в репозитории"; exit 1; }
             SHA=$(git rev-parse "origin/$BRANCH")
           else
-            # ветку могли удалить при мерже, поэтому берём коммит, а не имя
-            BRANCH="$PR_HEAD_REF"
-            SHA="$PR_HEAD_SHA"
+            # смерженный PR из release/**, которому принадлежит этот коммит
+            # (ветку могли удалить при мерже, поэтому берём коммит, а не имя)
+            PR=$(gh api "repos/$REPO/commits/$PUSH_SHA/pulls" \
+              --jq '[.[] | select(.merged_at != null and (.head.ref | startswith("release/")))][0] // empty | "\(.head.ref) \(.head.sha)"')
+            if [ -z "$PR" ]; then
+              echo "Это не мерж релизной ветки — релиз не нужен"
+              exit 0
+            fi
+            read -r BRANCH SHA <<< "$PR"
           fi
           VERSION="${BRANCH#release/}"
+          echo "Релиз $VERSION из $BRANCH ($SHA)"
 
           # main должен догнать именно этот коммит без merge, а он есть в develop,
           # только если PR смержен через «Create a merge commit» (не squash)
           git merge-base --is-ancestor "$SHA" origin/develop \
             || { echo "::error::Коммит $SHA не попал в develop. Релизную ветку нужно мержить через «Create a merge commit», не squash."; exit 1; }
 
-          CONF_VERSION=$(git show "$SHA:src-tauri/tauri.conf.json" | node -p 'JSON.parse(require("fs").readFileSync(0)).version')
+          CONF_VERSION=$(git show "$SHA:src-tauri/tauri.conf.json" | jq -r .version)
           [ "$CONF_VERSION" = "$VERSION" ] \
             || { echo "::error::В tauri.conf.json версия $CONF_VERSION, а ветка $BRANCH"; exit 1; }
 
-          if gh release view "$VERSION" >/dev/null 2>&1; then
+          if gh release view "$VERSION" -R "$REPO" >/dev/null 2>&1; then
             echo "Релиз $VERSION уже опубликован, сборку пропускаю"
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
@@ -87,7 +87,7 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Список изменений
-        if: steps.meta.outputs.published != 'true'
+        if: steps.meta.outputs.branch != ''
         id: notes
         env:
           SHA: ${{ steps.meta.outputs.sha }}
@@ -101,40 +101,46 @@ jobs:
             echo 'EOF_NOTES'
           } >> "$GITHUB_OUTPUT"
 
+  build:
+    needs: detect
+    if: needs.detect.outputs.branch != '' && needs.detect.outputs.published != 'true'
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
       - uses: actions/checkout@v4
-        if: steps.meta.outputs.published != 'true'
         with:
-          ref: ${{ steps.meta.outputs.sha }}
+          ref: ${{ needs.detect.outputs.sha }}
       - uses: actions/setup-node@v4
-        if: steps.meta.outputs.published != 'true'
         with:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-        if: steps.meta.outputs.published != 'true'
       - uses: Swatinem/rust-cache@v2
-        if: steps.meta.outputs.published != 'true'
         with:
           workspaces: src-tauri -> target
       - run: npm ci
-        if: steps.meta.outputs.published != 'true'
       - name: Сборка и публикация релиза
-        if: steps.meta.outputs.published != 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ steps.meta.outputs.version }}
-          releaseName: Macro Studio ${{ steps.meta.outputs.version }}
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseCommitish: ${{ steps.meta.outputs.sha }}
+          tagName: ${{ needs.detect.outputs.version }}
+          releaseName: Macro Studio ${{ needs.detect.outputs.version }}
+          releaseBody: ${{ needs.detect.outputs.notes }}
+          releaseCommitish: ${{ needs.detect.outputs.sha }}
           releaseDraft: false
           prerelease: false
 
   promote:
-    needs: build
+    needs: [detect, build]
+    # build пропущен, если релиз уже опубликован (повторный запуск) — main всё равно догоняем
+    if: >-
+      always() && needs.detect.result == 'success' && needs.detect.outputs.branch != '' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     environment: release
     steps:
@@ -145,8 +151,8 @@ jobs:
           ssh-key: ${{ secrets.DEPLOY_KEY }}
       - name: Fast-forward main и удаление релизной ветки
         env:
-          SHA: ${{ needs.build.outputs.sha }}
-          BRANCH: ${{ needs.build.outputs.branch }}
+          SHA: ${{ needs.detect.outputs.sha }}
+          BRANCH: ${{ needs.detect.outputs.branch }}
         run: |
           git merge --ff-only "$SHA"
           git push origin main
