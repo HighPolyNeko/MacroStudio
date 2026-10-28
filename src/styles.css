@@ -100,10 +100,17 @@ button.link:hover { text-decoration: underline; }
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   padding: 16px; display: flex; flex-direction: column; gap: 10px;
 }
-.update-card h3 { margin: 0; font-size: 16px; padding-right: 24px; }
+.update-card h3 { margin: 0; font-size: 16px; }
 .update-card .muted { margin: 0; }
+/* top: -16px — компенсирует padding карточки, чтобы шапка прилипала к самому верху */
+.card-head {
+  position: sticky; top: -16px; z-index: 1;
+  margin: -16px -16px 0; padding: 14px 10px 10px 16px;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel);
+}
 .card-close {
-  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; padding: 0;
+  margin-left: auto; width: 26px; height: 26px; padding: 0; flex: none;
   background: none; border: none; color: var(--muted); font-size: 18px; line-height: 1;
 }
 .card-close:hover { color: var(--text); }

@@ -129,12 +129,17 @@ export function updateButtonLabel(u: Updater): string {
 
 export function UpdateCard({ u }: { u: Updater }) {
   if (!u.panel) return null;
+  const isUpdate = u.panel === 'update' && u.upd;
   return (
     <div className="update-card" role="dialog" aria-label="Обновление Macro Studio">
-      <button className="card-close" title="Закрыть" onClick={u.close}>
-        ×
-      </button>
-      {u.panel === 'update' && u.upd ? <UpdateBody u={u} s={u.upd} /> : <WhatsNew current={u.version} />}
+      {/* шапка закреплена: при прокрутке длинного списка заголовок и крестик остаются на месте */}
+      <div className="card-head">
+        <h3>{isUpdate ? `Доступна версия ${u.upd!.update.version}` : 'Что нового'}</h3>
+        <button className="card-close" title="Закрыть" onClick={u.close}>
+          ×
+        </button>
+      </div>
+      {isUpdate ? <UpdateBody u={u} s={u.upd!} /> : <WhatsNew current={u.version} />}
     </div>
   );
 }
@@ -142,7 +147,6 @@ export function UpdateCard({ u }: { u: Updater }) {
 function UpdateBody({ u, s }: { u: Updater; s: UpdateState }) {
   return (
     <>
-      <h3>Доступна версия {s.update.version}</h3>
       <p className="muted">У вас {s.update.currentVersion}</p>
       <Notes md={s.notes} short />
 
@@ -205,7 +209,6 @@ function WhatsNew({ current }: { current: string | null }) {
 
   return (
     <>
-      <h3>Что нового</h3>
       {error && <div className="error-box">⚠ Не удалось загрузить список изменений: {error}</div>}
       {!releases && !error && <p className="muted">Загрузка…</p>}
       {releases?.length === 0 && <p className="muted">Релизов пока нет.</p>}
