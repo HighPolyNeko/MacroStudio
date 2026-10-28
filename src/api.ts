@@ -1,3 +1,4 @@
+import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, once } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -31,29 +32,39 @@ export async function onStatus(cb: (e: StatusEvent) => void): Promise<() => void
   return listen<StatusEvent>('macro-status', (e) => cb(e.payload));
 }
 
+/** Версия приложения из tauri.conf.json (вне Tauri — null). */
+export async function appVersion(): Promise<string | null> {
+  return isTauri() ? getVersion() : null;
+}
+
+/** 'none' — новее нет, 'later' — пользователь отказался, 'installed' — ставится (приложение перезапустится). */
+export type UpdateResult = 'none' | 'later' | 'installed';
+
 /**
  * Проверяет релизы на GitHub. Если есть версия новее — спрашивает и ставит её с перезапуском.
- * Ошибка проверки (нет сети, ещё нет ни одного релиза) не мешает работе: просто нет обновления.
- * В режиме разработки (tauri dev) не проверяет.
+ * При запуске (manual = false) ошибка проверки (нет сети и т.п.) не мешает работе: просто нет обновления,
+ * а в режиме разработки (tauri dev) проверки нет. По кнопке (manual = true) ошибка пробрасывается.
  */
-export async function checkForUpdates(): Promise<void> {
-  if (!isTauri() || import.meta.env.DEV) return;
+export async function checkForUpdates(manual = false): Promise<UpdateResult> {
+  if (!isTauri() || (import.meta.env.DEV && !manual)) return 'none';
   let update;
   try {
     update = await check();
   } catch (e) {
+    if (manual) throw e;
     console.warn('Проверка обновлений не удалась:', e);
-    return;
+    return 'none';
   }
-  if (!update) return;
+  if (!update) return 'none';
   const yes = await ask(
     `Доступна версия ${update.version} (у вас ${update.currentVersion}).\n\n` +
       'Установить сейчас? Запущенные макросы остановятся, приложение перезапустится.',
     { title: 'Обновление Macro Studio', kind: 'info', okLabel: 'Обновить', cancelLabel: 'Позже' },
   );
-  if (!yes) return;
+  if (!yes) return 'later';
   await update.downloadAndInstall();
   await relaunch();
+  return 'installed';
 }
 
 /** Это окно выбора точки (а не главное окно)? */
