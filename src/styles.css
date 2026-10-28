@@ -123,3 +123,15 @@ input[type='checkbox'] { width: auto; }
    отдельный слой перерисовывается целиком, а 2px не теряются между пикселями. */
 .react-flow__connectionline { will-change: transform; }
 .react-flow { --xy-connectionline-stroke-width: 2; }
+
+/* окно выбора точки на экране */
+html.picker-mode, html.picker-mode body { background: transparent; }
+.picker {
+  position: fixed; inset: 0; cursor: crosshair; user-select: none;
+  background: rgba(15, 17, 21, 0.35);
+}
+.picker-hint {
+  position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px;
+  padding: 8px 14px; pointer-events: none;
+}

@@ -25,6 +25,28 @@ pub fn platform_backends() -> (Arc<dyn InputBackend>, Arc<dyn KeyReader>) {
     (Arc::new(input::NullInput), Arc::new(input::NullKeys))
 }
 
+/// Прямоугольник всех мониторов: (x, y, ширина, высота) в физических пикселях.
+#[cfg(windows)]
+pub fn virtual_screen() -> (i32, i32, i32, i32) {
+    win::virtual_screen()
+}
+
+#[cfg(not(windows))]
+pub fn virtual_screen() -> (i32, i32, i32, i32) {
+    (0, 0, 1920, 1080)
+}
+
+/// Позиция курсора на экране (None, если узнать не удалось).
+#[cfg(windows)]
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    win::cursor_pos()
+}
+
+#[cfg(not(windows))]
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    None
+}
+
 #[cfg(test)]
 pub mod testutil {
     use crate::model::MacroDef;

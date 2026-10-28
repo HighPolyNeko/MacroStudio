@@ -7,8 +7,9 @@ use crate::keys::is_extended;
 use crate::model::Button;
 use std::mem::size_of;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+use windows_sys::Win32::Foundation::POINT;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+    GetCursorPos, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
     SM_YVIRTUALSCREEN, WHEEL_DELTA,
 };
 
@@ -106,6 +107,24 @@ impl InputBackend for WindowsInput {
         let delta = notches.saturating_mul(WHEEL_DELTA as i32);
         mouse(0, 0, delta as u32, MOUSEEVENTF_WHEEL)
     }
+}
+
+/// Прямоугольник всех мониторов вместе: (x, y, ширина, высота) в физических пикселях.
+pub fn virtual_screen() -> (i32, i32, i32, i32) {
+    unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    }
+}
+
+/// Текущая позиция курсора в тех же координатах, что и абсолютное движение в `mouse_move`.
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    let mut p = POINT { x: 0, y: 0 };
+    (unsafe { GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
 }
 
 impl KeyReader for WindowsKeys {

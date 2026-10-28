@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { listen, once } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { MacroDef, MacroReport, StatusEvent } from './types';
 
@@ -26,6 +27,27 @@ export async function stopAll() {
 export async function onStatus(cb: (e: StatusEvent) => void): Promise<() => void> {
   if (!isTauri()) return () => {};
   return listen<StatusEvent>('macro-status', (e) => cb(e.payload));
+}
+
+/** Это окно выбора точки (а не главное окно)? */
+export const isPickerWindow = () => isTauri() && getCurrentWindow().label === 'picker';
+
+/**
+ * Показывает полупрозрачное окно на весь экран и ждёт клика.
+ * Возвращает координаты точки в пикселях экрана или null, если выбор отменили.
+ */
+export async function pickPoint(): Promise<{ x: number; y: number } | null> {
+  if (!isTauri()) return null;
+  const result = new Promise<{ x: number; y: number } | null>((resolve) => {
+    once<{ x: number; y: number } | null>('point-picked', (e) => resolve(e.payload));
+  });
+  await invoke('start_pick_point');
+  return result;
+}
+
+/** Вызывается окном выбора: клик (cancel = false) или отмена. */
+export async function finishPickPoint(cancel: boolean) {
+  if (isTauri()) await invoke('finish_pick_point', { cancel });
 }
 
 /** Сохраняет текст в файл (диалог «Сохранить как»). Возвращает true, если файл записан. */

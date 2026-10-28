@@ -12,6 +12,7 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
+import { isTauri, pickPoint } from './api';
 import { KeyCapture } from './KeyCapture';
 import { defaultData, newId } from './macros';
 import { META, nodeTypes } from './nodes';
@@ -309,6 +310,16 @@ function NodeInspector({
 
       {t === 'mouseMove' && (
         <>
+          <button
+            disabled={!isTauri()}
+            title={isTauri() ? undefined : 'Работает только в приложении'}
+            onClick={async () => {
+              const p = await pickPoint();
+              if (p) onPatch({ x: p.x, y: p.y, relative: false });
+            }}
+          >
+            Выбрать точку на экране
+          </button>
           <Num label="X" value={d.x} onChange={(v) => onPatch({ x: v })} />
           <Num label="Y" value={d.y} onChange={(v) => onPatch({ y: v })} />
           <label className="check">
