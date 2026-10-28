@@ -133,6 +133,16 @@ export default function App() {
     setFolders((fs) => fs.filter((f) => f.id !== id));
     setMacros((ms) => ms.map((m) => (m.folderId === id ? withoutFolder(m) : m)));
   };
+  /** Ставит папку перед/после папки anchorId. */
+  const moveFolder = (id: string, anchorId: string, after: boolean) =>
+    setFolders((fs) => {
+      const f = fs.find((x) => x.id === id);
+      if (!f) return fs;
+      const rest = fs.filter((x) => x.id !== id);
+      const i = rest.findIndex((x) => x.id === anchorId);
+      const at = i < 0 ? rest.length : after ? i + 1 : i;
+      return [...rest.slice(0, at), f, ...rest.slice(at)];
+    });
   /** Включает или выключает горячие клавиши всех макросов папки. */
   const setFolderEnabled = (id: string, enabled: boolean) =>
     setMacros((ms) => ms.map((m) => (m.folderId === id ? { ...m, enabled } : m)));
@@ -240,6 +250,7 @@ export default function App() {
           onExportMacro={exportMacro}
           onDuplicateMacro={duplicateMacro}
           onRemoveMacro={removeMacro}
+          onMoveFolder={moveFolder}
         />
         <div className="side-foot">
           <button className="danger" onClick={() => api.stopAll()}>
