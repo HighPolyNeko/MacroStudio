@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from './api';
 import { Editor } from './Editor';
 import { KeyCapture } from './KeyCapture';
+import { MacroList } from './MacroList';
 import { UpdateCard, updateButtonLabel, useUpdater } from './Updates';
 import { newId, newMacro, normalizeMacro, sampleMacro, semanticKey, toExport } from './macros';
-import { MODE_LABELS, type MacroDef, type TriggerMode } from './types';
+import { MODE_LABELS, type Folder, type MacroDef, type TriggerMode } from './types';
 
 const STORAGE = 'macro-studio:v1';
+const FOLDERS_STORAGE = 'macro-studio:folders:v1';
 
 function loadLibrary(): MacroDef[] {
   try {
@@ -21,10 +23,25 @@ function loadLibrary(): MacroDef[] {
   return [sampleMacro()];
 }
 
+function loadFolders(): Folder[] {
+  try {
+    const arr = JSON.parse(localStorage.getItem(FOLDERS_STORAGE) ?? '[]');
+    if (Array.isArray(arr))
+      return arr
+        .filter((f) => f && typeof f.id === 'string' && typeof f.name === 'string')
+        .map((f) => ({ id: f.id, name: f.name, collapsed: !!f.collapsed }));
+  } catch {
+    /* повреждённое хранилище — без папок */
+  }
+  return [];
+}
+
 const fileName = (name: string) => `${name.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'macro'}.json`;
 
 export default function App() {
   const [macros, setMacros] = useState<MacroDef[]>(loadLibrary);
+  const [folders, setFolders] = useState<Folder[]>(loadFolders);
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string>(() => macros[0].id);
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -44,6 +61,13 @@ export default function App() {
       /* ignore */
     }
   }, [macros]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(FOLDERS_STORAGE, JSON.stringify(folders));
+    } catch {
+      /* ignore */
+    }
+  }, [folders]);
 
   // отправка в движок — только когда изменился смысл макросов (не позиции узлов)
   const key = useMemo(() => semanticKey(macros), [macros]);
@@ -87,43 +111,86 @@ export default function App() {
     return () => clearTimeout(t);
   }, [notice]);
 
-  const addMacro = () => {
-    const m = newMacro(`Макрос ${macros.length + 1}`);
+  const addMacro = (folderId?: string) => {
+    const m: MacroDef = { ...newMacro(`Макрос ${macros.length + 1}`), ...(folderId ? { folderId } : {}) };
     setMacros((ms) => [...ms, m]);
     setSelectedId(m.id);
+    if (folderId) setFolders((fs) => fs.map((f) => (f.id === folderId ? { ...f, collapsed: false } : f)));
   };
 
-  const duplicate = () => {
+  /* ---------- папки ---------- */
+
+  const addFolder = () => {
+    const f: Folder = { id: newId('f'), name: `Папка ${folders.length + 1}`, collapsed: false };
+    setFolders((fs) => [...fs, f]);
+    setRenamingFolder(f.id); // сразу ввести имя
+  };
+  const patchFolder = (id: string, patch: Partial<Folder>) =>
+    setFolders((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  /** Удаляет папку; её макросы остаются — без папки. */
+  const deleteFolder = (id: string) => {
+    setFolders((fs) => fs.filter((f) => f.id !== id));
+    setMacros((ms) => ms.map((m) => (m.folderId === id ? withoutFolder(m) : m)));
+  };
+  /** Включает или выключает горячие клавиши всех макросов папки. */
+  const setFolderEnabled = (id: string, enabled: boolean) =>
+    setMacros((ms) => ms.map((m) => (m.folderId === id ? { ...m, enabled } : m)));
+
+  /* ---------- действия с макросом (кнопки справа и меню по ПКМ в списке) ---------- */
+
+  /** Копия ставится сразу после оригинала, в ту же папку; горячая клавиша у копии пустая. */
+  const duplicateMacro = (src: MacroDef) => {
     const copy: MacroDef = {
-      ...structuredClone(selected),
+      ...structuredClone(src),
       id: newId('m'),
-      name: `${selected.name} (копия)`,
-      trigger: { ...selected.trigger, key: '' },
+      name: `${src.name} (копия)`,
+      trigger: { ...src.trigger, key: '' },
     };
-    setMacros((ms) => [...ms, copy]);
+    setMacros((ms) => {
+      const i = ms.findIndex((m) => m.id === src.id);
+      return [...ms.slice(0, i + 1), copy, ...ms.slice(i + 1)];
+    });
     setSelectedId(copy.id);
   };
 
-  const remove = () => {
+  const removeMacro = (id: string) => {
     if (macros.length === 1) {
       const m = newMacro();
       setMacros([m]);
       setSelectedId(m.id);
       return;
     }
-    const rest = macros.filter((m) => m.id !== selected.id);
+    const rest = macros.filter((m) => m.id !== id);
     setMacros(rest);
-    setSelectedId(rest[0].id);
+    if (id === selected.id) setSelectedId(rest[0].id);
   };
 
-  const doExport = async () => {
+  const exportMacro = async (m: MacroDef) => {
     try {
-      const ok = await api.exportText(fileName(selected.name), JSON.stringify(toExport(selected), null, 2));
+      const ok = await api.exportText(fileName(m.name), JSON.stringify(toExport(m), null, 2));
       if (ok) setNotice('Макрос сохранён в файл.');
     } catch (e) {
       setNotice(`Не удалось сохранить: ${String(e)}`);
     }
   };
+
+  /**
+   * Переносит макрос: в папку (или без папки, folderId = undefined) и на место —
+   * перед/после макроса anchorId; без anchorId — в конец.
+   */
+  const moveMacro = (id: string, to: { folderId?: string; anchorId?: string; after?: boolean }) =>
+    setMacros((ms) => {
+      const m = ms.find((x) => x.id === id);
+      if (!m) return ms;
+      const rest = ms.filter((x) => x.id !== id);
+      const moved = to.folderId ? { ...withoutFolder(m), folderId: to.folderId } : withoutFolder(m);
+      let at = rest.length;
+      if (to.anchorId) {
+        const i = rest.findIndex((x) => x.id === to.anchorId);
+        if (i >= 0) at = to.after ? i + 1 : i;
+      }
+      return [...rest.slice(0, at), moved, ...rest.slice(at)];
+    });
 
   const doImport = async () => {
     try {
@@ -131,7 +198,7 @@ export default function App() {
       if (text === null) return;
       const parsed = JSON.parse(text);
       const list = (Array.isArray(parsed) ? parsed : [parsed]).map((raw) => {
-        const m = normalizeMacro(raw);
+        const { folderId: _f, ...m } = normalizeMacro(raw);
         return { ...m, id: newId('m') };
       });
       if (!list.length) throw new Error('в файле нет макросов');
@@ -150,38 +217,29 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">Macro Studio</div>
         <div className="side-actions">
-          <button onClick={addMacro}>+ Новый</button>
+          <button onClick={() => addMacro()}>+ Новый</button>
+          <button onClick={addFolder} title="Папка для макросов, например по игре">+ Папка</button>
           <button onClick={doImport}>Импорт</button>
         </div>
-        <ul className="macro-list">
-          {macros.map((m) => (
-            <li
-              key={m.id}
-              className={m.id === selected.id ? 'active' : ''}
-              onClick={() => setSelectedId(m.id)}
-            >
-              <span className={`dot ${running[m.id] ? 'on' : ''}`} />
-              <div className="macro-meta">
-                <div className="macro-name">{m.name || 'Без названия'}</div>
-                <div className="macro-sub">
-                  {m.trigger.key ? `${m.trigger.key} · ${shortMode(m.trigger.mode)}` : 'без горячей клавиши'}
-                  {!m.enabled && ' · выключен'}
-                </div>
-                {errors[m.id] && <div className="macro-err">⚠ {errors[m.id]}</div>}
-              </div>
-              <button
-                className="play"
-                title={running[m.id] ? 'Остановить' : 'Запустить'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  running[m.id] ? api.stopMacro(m.id) : api.startMacro(m.id);
-                }}
-              >
-                {running[m.id] ? '■' : '▶'}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <MacroList
+          macros={macros}
+          folders={folders}
+          selectedId={selected.id}
+          running={running}
+          errors={errors}
+          renamingId={renamingFolder}
+          onSelect={setSelectedId}
+          onAddMacro={addMacro}
+          onRenameStart={setRenamingFolder}
+          onRenameFolder={(id, name) => patchFolder(id, { name })}
+          onToggleCollapsed={(id) => patchFolder(id, { collapsed: !folders.find((f) => f.id === id)?.collapsed })}
+          onSetFolderEnabled={setFolderEnabled}
+          onDeleteFolder={deleteFolder}
+          onMoveMacro={moveMacro}
+          onExportMacro={exportMacro}
+          onDuplicateMacro={duplicateMacro}
+          onRemoveMacro={removeMacro}
+        />
         <div className="side-foot">
           <button className="danger" onClick={() => api.stopAll()}>
             Остановить всё
@@ -215,6 +273,24 @@ export default function App() {
             <label className="field">
               <span>Название</span>
               <input value={selected.name} onChange={(e) => update(selected.id, { name: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>Папка</span>
+              <select
+                value={folders.some((f) => f.id === selected.folderId) ? selected.folderId : ''}
+                onChange={(e) =>
+                  e.target.value
+                    ? update(selected.id, { folderId: e.target.value })
+                    : setMacros((ms) => ms.map((m) => (m.id === selected.id ? withoutFolder(m) : m)))
+                }
+              >
+                <option value="">Без папки</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="field">
               <span>Горячая клавиша</span>
@@ -252,9 +328,9 @@ export default function App() {
             </label>
             {err && <div className="error-box">⚠ {err}</div>}
             <div className="row">
-              <button onClick={doExport}>Экспорт JSON</button>
-              <button onClick={duplicate}>Дублировать</button>
-              <button className="danger" onClick={remove}>
+              <button onClick={() => exportMacro(selected)}>Экспорт JSON</button>
+              <button onClick={() => duplicateMacro(selected)}>Дублировать</button>
+              <button className="danger" onClick={() => removeMacro(selected.id)}>
                 Удалить
               </button>
             </div>
@@ -266,6 +342,7 @@ export default function App() {
   );
 }
 
-function shortMode(m: TriggerMode): string {
-  return m === 'toggle' ? 'вкл/выкл' : m === 'hold' ? 'пока зажата' : 'один раз';
+function withoutFolder(m: MacroDef): MacroDef {
+  const { folderId: _f, ...rest } = m;
+  return rest;
 }

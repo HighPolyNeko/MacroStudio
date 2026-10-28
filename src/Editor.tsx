@@ -15,6 +15,7 @@ import {
   type XYPosition,
 } from '@xyflow/react';
 import { isTauri, pickPoint } from './api';
+import { ContextMenu, MenuItem, SubMenu } from './ContextMenu';
 import { KeyCapture } from './KeyCapture';
 import { defaultData, newId } from './macros';
 import { META, nodeTypes } from './nodes';
@@ -29,9 +30,6 @@ const CREATABLE: NodeType[] = ['key', 'mouse', 'mouseMove', 'scroll', 'delay', '
 // примерный размер узла: вход сверху по центру, чтобы новый узел встал под отпущенную линию
 const NODE_HALF_WIDTH = 85;
 const NODE_HEIGHT = 60;
-// размеры меню, чтобы оно не вылезало за холст
-const MENU_W = 190;
-const MENU_H = 240;
 
 /** Откуда тянули линию, которую отпустили в пустоте. */
 interface DragFrom {
@@ -42,13 +40,9 @@ interface DragFrom {
 
 /** Меню создания узла: по ПКМ на холсте или после линии, отпущенной в пустоте. */
 interface MenuState {
-  /** Координаты меню внутри холста. */
-  x: number;
-  y: number;
-  /** Подменю не помещается справа — открыть влево. */
-  flip: boolean;
-  /** Подменю не помещается снизу — открыть вверх. */
-  up: boolean;
+  /** Точка экрана, где открыть меню. */
+  clientX: number;
+  clientY: number;
   /** Точка на схеме, где создать узел. */
   at: XYPosition;
   from?: DragFrom;
@@ -164,24 +158,8 @@ function EditorInner({ macro, onUpdate, children }: Props) {
   const closeMenu = useCallback(() => setMenu(null), []);
 
   /** Открывает меню в точке экрана (clientX/clientY), не давая ему вылезти за холст. */
-  const openMenu = (clientX: number, clientY: number, from?: DragFrom) => {
-    const r = wrap.current?.getBoundingClientRect();
-    if (!r) return;
-    // меню ПКМ — одна строка «Создать», список узлов выпадает подменю
-    const height = from ? MENU_H : 44;
-    const x = Math.max(0, Math.min(clientX - r.left, r.width - MENU_W));
-    const visibleHeight = Math.min(r.height, window.innerHeight - r.top);
-    const y = Math.max(0, Math.min(clientY - r.top, visibleHeight - height));
-    setMenu({
-      x,
-      y,
-      // подменю может выходить за холст (поверх панелей), но не за окно
-      flip: r.left + x + MENU_W * 2 > window.innerWidth,
-      up: r.top + y + MENU_H > window.innerHeight,
-      at: rf.screenToFlowPosition({ x: clientX, y: clientY }),
-      from,
-    });
-  };
+  const openMenu = (clientX: number, clientY: number, from?: DragFrom) =>
+    setMenu({ clientX, clientY, at: rf.screenToFlowPosition({ x: clientX, y: clientY }), from });
 
   // Линию отпустили не на точке входа/выхода
   const onConnectEnd = useCallback(
@@ -304,54 +282,24 @@ function NodeMenu({
   onPick: (t: NodeType) => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [subOpen, setSubOpen] = useState(false);
-
-  // закрыть по клику мимо меню и по Esc
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as globalThis.Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-
   const list = CREATABLE.map((t) => (
-    <button key={t} className="menu-item" onClick={() => onPick(t)}>
+    <MenuItem key={t} onClick={() => onPick(t)}>
       <span className="menu-dot" style={{ background: META[t].color }} />
       {META[t].title}
-    </button>
+    </MenuItem>
   ));
 
   return (
-    <div
-      ref={ref}
-      className="ctx-menu"
-      style={{ left: menu.x, top: menu.y }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
+    <ContextMenu x={menu.clientX} y={menu.clientY} onClose={onClose}>
       {menu.from ? (
         <>
           <div className="menu-title">Создать и соединить</div>
           {list}
         </>
       ) : (
-        <div className="menu-sub" onMouseEnter={() => setSubOpen(true)} onMouseLeave={() => setSubOpen(false)}>
-          <button className="menu-item" onClick={() => setSubOpen((o) => !o)}>
-            Создать
-            <span className="menu-arrow">▸</span>
-          </button>
-          {subOpen && <div className={`ctx-menu submenu ${menu.flip ? 'flip' : ''} ${menu.up ? 'up' : ''}`}>{list}</div>}
-        </div>
+        <SubMenu label="Создать">{list}</SubMenu>
       )}
-    </div>
+    </ContextMenu>
   );
 }
 

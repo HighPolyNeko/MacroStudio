@@ -108,21 +108,26 @@ export function normalizeMacro(raw: any): MacroDef {
     trigger: { key: typeof raw.trigger?.key === 'string' ? raw.trigger.key : '', mode },
     nodes,
     edges,
+    ...(typeof raw.folderId === 'string' && raw.folderId ? { folderId: raw.folderId } : {}),
   };
 }
 
 /** Что попадает в файл экспорта (без внутреннего id библиотеки). */
 export function toExport(m: MacroDef) {
-  const { id: _id, ...rest } = m;
+  // папка — устройство своей библиотеки, в файл для обмена не попадает
+  const { id: _id, folderId: _f, ...rest } = m;
   return rest;
 }
 
 /** Ключ «смысла» макроса: без позиций узлов, чтобы перетаскивание не перезапускало движок. */
 export function semanticKey(ms: MacroDef[]): string {
   return JSON.stringify(
-    ms.map((m) => ({
-      ...m,
-      nodes: m.nodes.map(({ position: _p, ...n }) => n),
-    })),
+    // папка и порядок в списке движку не важны: перенос и перетаскивание макросов не перезапускают движок
+    [...ms]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(({ folderId: _f, ...m }) => ({
+        ...m,
+        nodes: m.nodes.map(({ position: _p, ...n }) => n),
+      })),
   );
 }
