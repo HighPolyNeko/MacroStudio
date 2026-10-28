@@ -28,6 +28,8 @@ export default function App() {
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const selected = macros.find((m) => m.id === selectedId) ?? macros[0];
 
@@ -79,8 +81,20 @@ export default function App() {
 
   // обновление с GitHub при запуске
   useEffect(() => {
+    api.appVersion().then(setVersion);
     api.checkForUpdates().catch((e) => setNotice(`Не удалось обновить: ${String(e)}`));
   }, []);
+
+  const checkUpdatesNow = async () => {
+    setChecking(true);
+    try {
+      if ((await api.checkForUpdates(true)) === 'none') setNotice('Установлена последняя версия.');
+    } catch (e) {
+      setNotice(`Не удалось проверить обновления: ${String(e)}`);
+    } finally {
+      setChecking(false);
+    }
+  };
 
   useEffect(() => {
     if (!notice) return;
@@ -188,6 +202,16 @@ export default function App() {
             Остановить всё
           </button>
           <small>Аварийная остановка с клавиатуры — клавиша Pause (Break).</small>
+          <div className="update-box">
+            <button
+              disabled={!api.isTauri() || checking}
+              title={api.isTauri() ? undefined : 'Работает только в приложении'}
+              onClick={checkUpdatesNow}
+            >
+              {checking ? 'Проверяю…' : '⟳ Проверить обновления'}
+            </button>
+            <small>{version ? `Macro Studio ${version}` : 'Macro Studio'}</small>
+          </div>
         </div>
       </aside>
 

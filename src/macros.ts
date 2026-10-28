@@ -95,6 +95,10 @@ export function normalizeMacro(raw: any): MacroDef {
       sourceHandle: e.sourceHandle === 'body' ? 'body' : 'next',
     };
   });
+  // «Старт» есть в каждом макросе ровно один: если его нет — добавляем, если несколько — это ошибка
+  const starts = nodes.filter((n) => n.type === 'start').length;
+  if (starts > 1) throw new Error('в макросе несколько узлов «Старт»');
+  if (starts === 0) nodes.unshift({ id: newId('n'), type: 'start', position: { x: 200, y: 40 }, data: {} });
   const mode: TriggerMode = MODES.includes(raw.trigger?.mode) ? raw.trigger.mode : 'toggle';
   return {
     version: 1,

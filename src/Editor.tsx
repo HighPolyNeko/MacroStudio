@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   addEdge,
   Background,
@@ -10,7 +10,9 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type FinalConnectionState,
   type Node,
+  type XYPosition,
 } from '@xyflow/react';
 import { isTauri, pickPoint } from './api';
 import { KeyCapture } from './KeyCapture';
@@ -21,7 +23,36 @@ import type { MacroDef, MacroEdge, MacroNode, NodeType } from './types';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FlowNode = Node<Record<string, any>>;
 
-const PALETTE: NodeType[] = ['key', 'mouse', 'mouseMove', 'scroll', 'delay', 'loop', 'start'];
+/** Узлы, которые можно создать. «Старт» есть всегда, ровно один: его не создают и не удаляют. */
+const CREATABLE: NodeType[] = ['key', 'mouse', 'mouseMove', 'scroll', 'delay', 'loop'];
+
+// примерный размер узла: вход сверху по центру, чтобы новый узел встал под отпущенную линию
+const NODE_HALF_WIDTH = 85;
+const NODE_HEIGHT = 60;
+// размеры меню, чтобы оно не вылезало за холст
+const MENU_W = 190;
+const MENU_H = 240;
+
+/** Откуда тянули линию, которую отпустили в пустоте. */
+interface DragFrom {
+  nodeId: string;
+  handleId: string | null;
+  type: 'source' | 'target';
+}
+
+/** Меню создания узла: по ПКМ на холсте или после линии, отпущенной в пустоте. */
+interface MenuState {
+  /** Координаты меню внутри холста. */
+  x: number;
+  y: number;
+  /** Подменю не помещается справа — открыть влево. */
+  flip: boolean;
+  /** Подменю не помещается снизу — открыть вверх. */
+  up: boolean;
+  /** Точка на схеме, где создать узел. */
+  at: XYPosition;
+  from?: DragFrom;
+}
 
 const toFlowNode = (n: MacroNode): FlowNode => ({ ...n, deletable: n.type !== 'start' });
 const toFlowEdge = (e: MacroEdge): Edge => ({ ...e });
@@ -94,30 +125,102 @@ function EditorInner({ macro, onUpdate, children }: Props) {
     [],
   );
 
+  /** Соединяет, если связь допустима: без замкнутого круга и не во вход «Старта» (его нет). */
+  const connectIfValid = useCallback(
+    (c: Connection) => {
+      const target = rf.getNode(c.target);
+      if (target?.type === 'start' || !isValidConnection(c)) return;
+      onConnect(c);
+    },
+    [rf, isValidConnection, onConnect],
+  );
+
+  /** Создаёт узел в точке схемы; если узел создан из отпущенной линии — сразу соединяет. */
+  const createNode = (type: NodeType, at: XYPosition, from?: DragFrom) => {
+    const id = newId('n');
+    // линию тянули из выхода — новый узел встаёт входом в точку; из входа — встаёт над ней
+    const position = from
+      ? { x: at.x - NODE_HALF_WIDTH, y: from.type === 'source' ? at.y : at.y - NODE_HEIGHT }
+      : at;
+    const node: FlowNode = { id, type, position, data: defaultData(type), selected: true, deletable: true };
+    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), node]);
+    if (from?.type === 'source') {
+      onConnect({ source: from.nodeId, sourceHandle: from.handleId, target: id, targetHandle: null });
+    } else if (from) {
+      onConnect({ source: id, sourceHandle: 'next', target: from.nodeId, targetHandle: null });
+    }
+  };
+
   const addNode = (type: NodeType) => {
     const r = wrap.current?.getBoundingClientRect();
     const jitter = () => Math.random() * 80 - 40;
-    const position = r
+    const at = r
       ? rf.screenToFlowPosition({ x: r.left + r.width / 2 + jitter(), y: r.top + r.height / 2 + jitter() })
       : { x: 100, y: 100 };
-    const node: FlowNode = {
-      id: newId('n'),
-      type,
-      position,
-      data: defaultData(type),
-      selected: true,
-      deletable: true,
-    };
-    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), node]);
+    createNode(type, at);
   };
 
-  const hasStart = nodes.some((n) => n.type === 'start');
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  /** Открывает меню в точке экрана (clientX/clientY), не давая ему вылезти за холст. */
+  const openMenu = (clientX: number, clientY: number, from?: DragFrom) => {
+    const r = wrap.current?.getBoundingClientRect();
+    if (!r) return;
+    // меню ПКМ — одна строка «Создать», список узлов выпадает подменю
+    const height = from ? MENU_H : 44;
+    const x = Math.max(0, Math.min(clientX - r.left, r.width - MENU_W));
+    const visibleHeight = Math.min(r.height, window.innerHeight - r.top);
+    const y = Math.max(0, Math.min(clientY - r.top, visibleHeight - height));
+    setMenu({
+      x,
+      y,
+      // подменю может выходить за холст (поверх панелей), но не за окно
+      flip: r.left + x + MENU_W * 2 > window.innerWidth,
+      up: r.top + y + MENU_H > window.innerHeight,
+      at: rf.screenToFlowPosition({ x: clientX, y: clientY }),
+      from,
+    });
+  };
+
+  // Линию отпустили не на точке входа/выхода
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (state.isValid || !state.fromNode || !state.fromHandle) return;
+      const p = 'changedTouches' in event ? event.changedTouches[0] : event;
+      const from: DragFrom = {
+        nodeId: state.fromNode.id,
+        handleId: state.fromHandle.id ?? null,
+        type: state.fromHandle.type,
+      };
+      const nodeEl = document
+        .elementsFromPoint(p.clientX, p.clientY)
+        .map((el) => el.closest('.react-flow__node'))
+        .find(Boolean);
+      const nodeId = nodeEl?.getAttribute('data-id');
+      if (nodeId) {
+        // на тело узла — соединяем с его входом (или из его выхода, если тянули из входа)
+        if (nodeId === from.nodeId) return;
+        connectIfValid(
+          from.type === 'source'
+            ? { source: from.nodeId, sourceHandle: from.handleId, target: nodeId, targetHandle: null }
+            : { source: nodeId, sourceHandle: 'next', target: from.nodeId, targetHandle: null },
+        );
+        return;
+      }
+      // в пустоту — меню: создать узел и сразу соединить
+      openMenu(p.clientX, p.clientY, from);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [connectIfValid],
+  );
   const selectedNodes = nodes.filter((n) => n.selected);
   const node = selectedNodes.length === 1 ? selectedNodes[0] : null;
 
   const patchData = (id: string, patch: Record<string, unknown>) =>
     setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
   const removeNode = (id: string) => {
+    if (nodes.find((n) => n.id === id)?.type === 'start') return;
     setNodes((ns) => ns.filter((n) => n.id !== id));
     setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
   };
@@ -126,14 +229,8 @@ function EditorInner({ macro, onUpdate, children }: Props) {
     <div className="editor">
       <div className="palette">
         <span className="palette-label">Добавить:</span>
-        {PALETTE.map((t) => (
-          <button
-            key={t}
-            className="chip"
-            style={{ borderColor: META[t].color }}
-            disabled={t === 'start' && hasStart}
-            onClick={() => addNode(t)}
-          >
+        {CREATABLE.map((t) => (
+          <button key={t} className="chip" style={{ borderColor: META[t].color }} onClick={() => addNode(t)}>
             {META[t].title}
           </button>
         ))}
@@ -145,6 +242,12 @@ function EditorInner({ macro, onUpdate, children }: Props) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
+          onPaneContextMenu={(e) => {
+            e.preventDefault();
+            openMenu(e.clientX, e.clientY);
+          }}
+          onMoveStart={closeMenu}
           isValidConnection={isValidConnection}
           nodeTypes={nodeTypes}
           deleteKeyCode={['Delete', 'Backspace']}
@@ -156,6 +259,16 @@ function EditorInner({ macro, onUpdate, children }: Props) {
           <Background gap={20} />
           <Controls showInteractive={false} />
         </ReactFlow>
+        {menu && (
+          <NodeMenu
+            menu={menu}
+            onClose={closeMenu}
+            onPick={(t) => {
+              createNode(t, menu.at, menu.from);
+              closeMenu();
+            }}
+          />
+        )}
       </div>
       <aside className="inspector">
         {node ? (
@@ -177,6 +290,68 @@ export function Editor(props: Props) {
     <ReactFlowProvider>
       <EditorInner {...props} />
     </ReactFlowProvider>
+  );
+}
+
+/* ---------- Меню создания узла ---------- */
+
+function NodeMenu({
+  menu,
+  onPick,
+  onClose,
+}: {
+  menu: MenuState;
+  onPick: (t: NodeType) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [subOpen, setSubOpen] = useState(false);
+
+  // закрыть по клику мимо меню и по Esc
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as globalThis.Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const list = CREATABLE.map((t) => (
+    <button key={t} className="menu-item" onClick={() => onPick(t)}>
+      <span className="menu-dot" style={{ background: META[t].color }} />
+      {META[t].title}
+    </button>
+  ));
+
+  return (
+    <div
+      ref={ref}
+      className="ctx-menu"
+      style={{ left: menu.x, top: menu.y }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {menu.from ? (
+        <>
+          <div className="menu-title">Создать и соединить</div>
+          {list}
+        </>
+      ) : (
+        <div className="menu-sub" onMouseEnter={() => setSubOpen(true)} onMouseLeave={() => setSubOpen(false)}>
+          <button className="menu-item" onClick={() => setSubOpen((o) => !o)}>
+            Создать
+            <span className="menu-arrow">▸</span>
+          </button>
+          {subOpen && <div className={`ctx-menu submenu ${menu.flip ? 'flip' : ''} ${menu.up ? 'up' : ''}`}>{list}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 

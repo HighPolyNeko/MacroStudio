@@ -134,6 +134,14 @@ jobs:
           releaseCommitish: ${{ needs.detect.outputs.sha }}
           releaseDraft: false
           prerelease: false
+      - name: Убрать отдельные .sig (подпись уже внутри latest.json)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.detect.outputs.version }}
+        run: |
+          gh release view "$VERSION" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name | select(endswith(".sig"))' |
+            while read -r NAME; do gh release delete-asset "$VERSION" "$NAME" -R "$GITHUB_REPOSITORY" -y; done
 
   promote:
     needs: [detect, build]
